@@ -1,0 +1,99 @@
+
+name: Build PDF Pro No Ad APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Find and Extract Flutter ZIP
+        shell: bash
+        run: |
+          set -e
+
+          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found!"
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP_FILE"
+          mkdir -p extracted_project
+          unzip -q "$ZIP_FILE" -d extracted_project
+
+          PUBSPEC=$(find extracted_project -name pubspec.yaml -type f | head -n 1)
+
+          if [ -z "$PUBSPEC" ]; then
+            echo "ERROR: pubspec.yaml not found!"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PUBSPEC")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Flutter project: $PROJECT_DIR"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Check Flutter
+        run: flutter --version
+
+      - name: Check Project Files
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          test -f pubspec.yaml
+          test -d lib
+          test -f lib/main.dart
+
+      - name: Generate Android Platform
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          flutter create --platforms=android .
+
+      - name: Install Dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter pub get
+
+      - name: Analyze Project
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter analyze
+
+      - name: Run Tests
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter test
+
+      - name: Build Release APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF-Pro-No-Ad-Android-APK
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+          
